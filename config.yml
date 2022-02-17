@@ -1,6 +1,7 @@
 token: 5276786543:AAGd-RhyWSQrbrVDHk2WxVERHhJiChzbW1U #BookGitalBot
 admins: 
   - 127529747
+  - 127876
 mainloop_timer: 5
 advice_timer: 600 # 7 days in seconds = 604800
 re_invitation_timer: 600 # 3 days in seconds = 259200
