@@ -259,13 +259,15 @@ def MainLoop():
                         chat.add_item('books_sent_ids', book['id'])
                         title = book['name']
                         description = book['description'].replace('\n', '\n\n')    
-                        keyboard = [
-                            [InlineKeyboardButton("Попробовать еще раз", callback_data='Q3')],
-                        ]
-                        reply_markup = InlineKeyboardMarkup(keyboard)
-                        updater.bot.send_message(chat.tg_chat_id, f"<b>{title}</b>\n {description}", parse_mode=ParseMode.HTML, disable_web_page_preview=True, reply_markup=reply_markup)
+                        
+                        updater.bot.send_message(chat.tg_chat_id, f"<b>{title}</b>\n {description}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
                         if 'file' in book:
                             updater.bot.send_document(chat.tg_chat_id, document=open(book['file'], 'rb'), caption="Файл с карточками")
+                        keyboard = [
+                            [InlineKeyboardButton("Попробовать", callback_data='Q3')],
+                        ]
+                        reply_markup = InlineKeyboardMarkup(keyboard)
+                        updater.bot.send_message(chat.tg_chat_id, f"Попробовать еще раз?", parse_mode=ParseMode.HTML, disable_web_page_preview=True, reply_markup=reply_markup)
                         chat.set_state('last_adv', datetime.now().timestamp())
             else:
                 updater.bot.send_message(chat.tg_chat_id, "Нет новой рекомендации")
