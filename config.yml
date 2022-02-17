@@ -3,7 +3,7 @@ admins:
   - 127529747
 mainloop_timer: 5
 advice_timer: 600 # 7 days in seconds = 604800
-re_invitation_timer: 259200 # 3 days in seconds = 259200
+re_invitation_timer: 600 # 3 days in seconds = 259200
 
 books:
   - id: glaz-volka
