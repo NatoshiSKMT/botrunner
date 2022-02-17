@@ -278,6 +278,7 @@ def MainLoop():
             reply_markup = InlineKeyboardMarkup(keyboard)
             updater.bot.send_message(chat.tg_chat_id, f"{reply_text}", parse_mode=ParseMode.HTML, disable_web_page_preview=True, reply_markup=reply_markup)
             logger.info(f"REPLY: {reply_text}")
+            chat.set_state('last_adv', datetime.now().timestamp())
           
 
 def load_chat(tg_chat_id):
