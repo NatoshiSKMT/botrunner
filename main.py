@@ -144,10 +144,16 @@ def ontext(update, context):
     return True
 
 
-def button(update: Update, context: CallbackContext) -> None:
+def button(update: Update, context: CallbackContext):
     """Parses the CallbackQuery and updates the message text."""
     update.callback_query.answer()
-    
+
+    user_selected_oprion = ''
+    for onerow in update.callback_query.message.reply_markup.inline_keyboard:
+        for onekey in onerow:
+            if onekey['callback_data'] == update.callback_query.data:
+                user_selected_oprion = onekey['text']
+
     tg_chat_id = update.callback_query.message.chat.id
     tmp = update.callback_query.data.split("||")
     button = tmp[0]
@@ -207,7 +213,11 @@ def button(update: Update, context: CallbackContext) -> None:
     
     update.callback_query.message.reply_text(reply_text, reply_markup=reply_markup)
     logger.info(f"REPLY: {reply_text}")
-    update.callback_query.message.delete()
+    
+    
+    #update.callback_query.message.delete()
+    update.callback_query.message.edit_text(update.callback_query.message.text + f"\n\n<b>{user_selected_oprion}</b>", reply_markup=None, parse_mode=ParseMode.HTML)
+    
     print(current_chat.state)
 
 
