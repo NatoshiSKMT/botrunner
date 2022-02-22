@@ -33,7 +33,6 @@ try:
     logger.info("MongoDB connected!")
     db = conn.database
     chats_collection = db.booksbot
-    #chats_collection.delete_many({})
 except:
     logger.error("Could not connect to MongoDB")
     
@@ -102,6 +101,12 @@ def ontext(update, context):
     if (text == 'status') and (tg_chat_id in config['admins']):
         for tg_chat_id, chat in Chats.items():
             print(tg_chat_id, chat.state)
+            return
+    
+    if (text == 'DROPDATABASE') and (tg_chat_id in config['admins']):
+        for tg_chat_id, chat in Chats.items():
+            chats_collection.delete_many({})
+            updater.bot.send_message(chat.tg_chat_id, f"Done. /start", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
             return
     
     if text == 'all' and (tg_chat_id in config['admins']):
@@ -240,7 +245,6 @@ def MainLoop():
                     [InlineKeyboardButton("Начать", callback_data='Q1')],
                     [InlineKeyboardButton("Попозже", callback_data='wait||status:new')],
                 ]
-
                 reply_markup = InlineKeyboardMarkup(keyboard)
                 text = "Понимаем, что возможно вы сейчас заняты другими вопросами. Просто хотим напомнить, что готовы рекомендовать книгу для ребенка. Начнем?"
                 updater.bot.send_message(chat.tg_chat_id, text, reply_markup=reply_markup)
@@ -273,14 +277,15 @@ def MainLoop():
                         updater.bot.send_message(chat.tg_chat_id, f"<b>{title}</b>\n {description}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
                         if 'file' in book:
                             updater.bot.send_document(chat.tg_chat_id, document=open(book['file'], 'rb'), caption="Файл с карточками")
-                        keyboard = [
-                            [InlineKeyboardButton("Попробовать", callback_data='Q3')],
-                        ]
+                        keyboard = [[InlineKeyboardButton("Попробовать", callback_data='Q3')],]
                         reply_markup = InlineKeyboardMarkup(keyboard)
                         updater.bot.send_message(chat.tg_chat_id, f"Попробовать еще раз?", parse_mode=ParseMode.HTML, disable_web_page_preview=True, reply_markup=reply_markup)
                         chat.set_state('last_adv', datetime.now().timestamp())
             else:
                 updater.bot.send_message(chat.tg_chat_id, "Нет новой рекомендации")
+                keyboard = [[InlineKeyboardButton("Попробовать", callback_data='Q3')],]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                updater.bot.send_message(chat.tg_chat_id, f"Попробовать еще раз?", parse_mode=ParseMode.HTML, disable_web_page_preview=True, reply_markup=reply_markup)
                 pass
 
         # Processing 'advice' status
