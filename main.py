@@ -328,12 +328,17 @@ def MainLoop():
                         title = book['name']
                         description = book['description'].replace('\n', '\n\n')    
                         
+                        updater.bot.send_chat_action(chat_id=chat.tg_chat_id, action=ChatAction.TYPING)
                         time.sleep(config['typing_timer'])
                         updater.bot.send_message(chat.tg_chat_id, f"<b>{title}</b>\n {description}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
                         if 'file' in book:
+                            updater.bot.send_chat_action(chat_id=chat.tg_chat_id, action=ChatAction.TYPING)
+                            time.sleep(config['typing_timer'])
                             updater.bot.send_document(chat.tg_chat_id, document=open(book['file'], 'rb'), caption="Файл с карточками")
                         keyboard = [[InlineKeyboardButton("Попробовать", callback_data='Q3')],]
                         reply_markup = InlineKeyboardMarkup(keyboard)
+                        updater.bot.send_chat_action(chat_id=chat.tg_chat_id, action=ChatAction.TYPING)
+                        time.sleep(config['typing_timer'])
                         updater.bot.send_message(chat.tg_chat_id, f"Попробовать еще раз?", parse_mode=ParseMode.HTML, disable_web_page_preview=True, reply_markup=reply_markup)
                         chat.set_state('last_adv', datetime.now().timestamp())
             else:
