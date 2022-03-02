@@ -1,28 +1,37 @@
-#!/usr/bin/env python3
-import json
-from typing import Collection
+# !/usr/bin/env python3
+import sys
 import yaml
 import logging
-from telegram.ext import Updater, MessageHandler, Filters, CommandHandler, CallbackQueryHandler, CallbackContext
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, ParseMode
-from telegram.utils.helpers import escape_markdown
+import time
+from telegram.ext import Updater, MessageHandler, Filters, CallbackQueryHandler, CallbackContext
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, ParseMode, ChatAction
 from datetime import datetime, timezone
 from threading import Timer
 from pymongo import MongoClient
+from functools import wraps
+
+def send_typing_action(func):
+    """Sends typing action while processing func command."""
+
+    @wraps(func)
+    def command_func(update, context, *args, **kwargs):
+        context.bot.send_chat_action(chat_id=update.effective_message.chat_id, action=ChatAction.TYPING)
+        return func(update, context,  *args, **kwargs)
+
+    return command_func
+
 
 # Set up the logger
-logging.basicConfig(
-    level=logging.INFO,
-    #level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+#filename = 'log.log'
+filename = None
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', filename=filename)
 logger = logging.getLogger(__name__)
 
 # Loading configuration
 try:
-    config = yaml.safe_load(open("config.yml"))
-except Exception:
-    logger.exception("Fail to open config.yml")
+    config = yaml.safe_load(open("config.yml", "r", encoding="utf-8"))
+except FileNotFoundError:
+    logger.error("Fail to open config.yml")
     exit()
 else:
     logger.info("Configuration loaded from config.yml")
@@ -43,13 +52,16 @@ try:
     dispatcher = updater.dispatcher
 except Exception:
     logger.exception("Bot is NOT running")
-    exit()
+    sys.exit()
 else:
     logger.info("Bot is running")
 
 
 class Chat():
-    """Class for operate with telegram chats."""
+    """
+        Class for operate with telegram chats.
+        state: 
+    """
     def __init__(self, tg_chat_id):
         super(Chat, self).__init__()
         self.tg_chat_id = tg_chat_id
@@ -80,7 +92,7 @@ class Chat():
         self.state[name].append(item)
         chats_collection.update_one({ "_id": self.tg_chat_id }, { "$set": {"state": self.state }})
 
-
+@send_typing_action
 def ontext(update, context):
     """ Processing all patterns on text messages """
     # Ignore edited message
@@ -119,6 +131,23 @@ def ontext(update, context):
                 updater.bot.send_document(chat.tg_chat_id, document=open(book['file'], 'rb'), caption="Файл с карточками")
         return
     
+    if text == '/stat' and (tg_chat_id in config['admins']):
+        stats = {}
+        
+        stats['total'] = Chats.__len__()
+        stats['wait'] = chats_collection.count_documents({"state.status": "wait"})
+        stats['new'] = chats_collection.count_documents({"state.status": "new"})
+        stats['books'] = 0
+        for chat in Chats.values():
+            stats['books'] += len(chat.state['books_sent_ids'])
+        reply_text = f"<b>Статистика бота</b>\n\n"
+        reply_text += f"Всего чатов: {stats['total']}\n"
+        reply_text += f"Не прошли отпрос: {stats['new']}\n"
+        reply_text += f"Прошли опрос и получили рекомендацию: {stats['wait']}\n"
+        reply_text += f"Всего книг отправлено: {stats['books']}\n"
+        updater.bot.send_message(tg_chat_id, reply_text, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        return
+    
     if text.startswith('РАССЫЛКА') and (tg_chat_id in config['admins']):
         chat = current_chat
         title = "Черновик сообщения"
@@ -133,6 +162,30 @@ def ontext(update, context):
         updater.bot.send_message(chat.tg_chat_id, f"<b>{title}</b>\n {spam}", parse_mode=ParseMode.HTML, disable_web_page_preview=True, reply_markup=reply_markup)
         return
 
+    # temporary solution
+    if config['access_codes'].__len__() > 0:
+        if text.startswith('/start'):
+            access_string = text.split(' ')
+            if access_string.__len__() == 2:
+                if access_string[1] in config['access_codes']:
+                    current_chat.set_state('access_code', access_string[1])
+                    text = access_string[0]
+                    print(text)
+                else:
+                    updater.bot.send_message(tg_chat_id, "Неверный код доступа")
+                    return
+            else:
+                updater.bot.send_message(tg_chat_id, "Пустой код доступа")
+                return
+
+        if text.startswith('/restart'):
+            if 'access_code' not in current_chat.state:
+                updater.bot.send_message(tg_chat_id, "Пустой код доступа")
+                return
+            if current_chat.state['access_code'] not in config['access_codes']:
+                updater.bot.send_message(tg_chat_id, "Неверный код доступа")
+                return
+        
     reply_text = config['default_replay']
     keyboard = []
     for reaction in config['reactions']:
@@ -144,11 +197,12 @@ def ontext(update, context):
 
     reply_markup = InlineKeyboardMarkup(keyboard)
 
+    time.sleep(config['typing_timer'])
     update.message.reply_text(reply_text, reply_markup=reply_markup)
     logger.info(f"REPLY: {reply_text}")
     return True
 
-
+@send_typing_action
 def button(update: Update, context: CallbackContext):
     """Parses the CallbackQuery and updates the message text."""
     update.callback_query.answer()
@@ -203,8 +257,7 @@ def button(update: Update, context: CallbackContext):
             except IndexError:
                 print("Err", data)
                 pass
-            
-    
+
     reply_text = 'Unknown callback'
     keyboard = []
     for callback in config['callbacks']:
@@ -216,6 +269,7 @@ def button(update: Update, context: CallbackContext):
 
     reply_markup = InlineKeyboardMarkup(keyboard)
     
+    time.sleep(config['typing_timer'])
     update.callback_query.message.reply_text(reply_text, reply_markup=reply_markup)
     logger.info(f"REPLY: {reply_text}")
     
@@ -274,6 +328,7 @@ def MainLoop():
                         title = book['name']
                         description = book['description'].replace('\n', '\n\n')    
                         
+                        time.sleep(config['typing_timer'])
                         updater.bot.send_message(chat.tg_chat_id, f"<b>{title}</b>\n {description}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
                         if 'file' in book:
                             updater.bot.send_document(chat.tg_chat_id, document=open(book['file'], 'rb'), caption="Файл с карточками")
@@ -297,6 +352,7 @@ def MainLoop():
                 [InlineKeyboardButton("Отмена", callback_data='nothing')],
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
+            time.sleep(config['typing_timer'])
             updater.bot.send_message(chat.tg_chat_id, f"{reply_text}", parse_mode=ParseMode.HTML, disable_web_page_preview=True, reply_markup=reply_markup)
             logger.info(f"REPLY: {reply_text}")
             chat.set_state('last_adv', datetime.now().timestamp())
