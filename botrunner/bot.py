@@ -4,7 +4,7 @@ import logging
 from telegram.ext import Updater, MessageHandler, Filters, CallbackQueryHandler, CallbackContext
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, ParseMode, ChatAction
 
-from botruner.helpers import send_typing_action
+from helpers import send_typing_action
 
 class BotClass():
     """Class for operate with telegram bots"""

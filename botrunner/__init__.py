@@ -1,4 +1,4 @@
-# !/usr/bin/env python
+# !/usr/bin/env python3
 """Bot runer"""
 from .chat import ChatClass
 from .bot import BotClass

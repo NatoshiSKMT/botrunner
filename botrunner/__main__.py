@@ -12,11 +12,11 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, ParseMo
 from threading import Timer
 from pymongo import MongoClient
 
-from botruner.bot import BotClass
+from bot import BotClass
 
 # Set up main logger
 
-FILE_NAME = None # 'botruner.log' - if you want to log to a file
+FILE_NAME = None # 'botrunner.log' - if you want to log to a file
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
