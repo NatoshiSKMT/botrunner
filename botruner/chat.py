@@ -2,6 +2,7 @@
 """ChatClass for botrunner."""
 from datetime import datetime
 
+
 class ChatClass():
     """Class for operate with telegram chats"""
     def __init__(self, tg_chat_id, chats_collection):
