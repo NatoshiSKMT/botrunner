@@ -1,0 +1,18 @@
+
+# WARNING
+# NOT UP TO DATE
+
+token: 
+admins: 
+  - 123456
+mainloop_timer: 5
+advice_timer: 604800 # 7 days in seconds = 604800
+re_invitation_timer: 259200 # 3 days in seconds = 259200
+
+default_replay: I dont understand u.
+reactions:
+  - comand: /start
+    replay: 
+    buttons:
+
+callbacks:

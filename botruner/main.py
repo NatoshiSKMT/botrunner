@@ -23,6 +23,7 @@ def send_typing_action(func):
     return command_func
 
 
+# todo: move logfile to the bot folder
 # Set up the logger
 #filename = 'log.log'
 filename = None
