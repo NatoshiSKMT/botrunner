@@ -1,104 +1,31 @@
 #!/usr/bin/env python
 """This application provides the launch of a telegram bot"""
+from lib2to3.pgen2 import token
 import sys
+import yaml
+import os
 import logging
 import time
 from datetime import datetime, timezone
 from telegram.ext import Updater, MessageHandler, Filters, CallbackQueryHandler, CallbackContext
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, ParseMode, ChatAction
-import yaml
 from threading import Timer
 from pymongo import MongoClient
-from functools import wraps
 
 
-def send_typing_action(func):
-    """Sends typing action while processing func command."""
+from chat import ChatClass
+from bot import BotClass
+from helpers import send_typing_action
 
-    @wraps(func)
-    def command_func(update, context, *args, **kwargs):
-        context.bot.send_chat_action(chat_id=update.effective_message.chat_id, action=ChatAction.TYPING)
-        return func(update, context,  *args, **kwargs)
+# Set up main logger
 
-    return command_func
-
-
-# todo: move logfile to the bot folder
-# Set up the logger
-#filename = 'log.log'
-filename = None
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', filename=filename)
+FILE_NAME = None # 'botruner.log' - if you want to log to a file
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    filename=FILE_NAME,
+    )
 logger = logging.getLogger(__name__)
-
-# Loading configuration
-try:
-    config = yaml.safe_load(open("config.yml", "r", encoding="utf-8"))
-except FileNotFoundError:
-    logger.error("Fail to open config.yml")
-    exit()
-else:
-    logger.info("Configuration loaded from config.yml")
-
-# Connect to MongoDB
-try:
-    conn = MongoClient()
-    logger.info("MongoDB connected!")
-    db = conn.database
-    chats_collection = db.booksbot
-except:
-    logger.error("Could not connect to MongoDB")
-    
-# Run telegram bot
-try:
-    updater = Updater(token=config['token'], use_context=True)
-    updater.start_polling()
-    dispatcher = updater.dispatcher
-except Exception:
-    logger.exception("Bot is NOT running")
-    sys.exit()
-else:
-    logger.info("Bot is running")
-
-
-class Chat():
-    """
-        Class for operate with telegram chats
-        
-    """
-    def __init__(self, tg_chat_id):
-        super(Chat, self).__init__()
-        self.tg_chat_id = tg_chat_id
-        self.state = {
-            "status": "new",
-            "tags": [],
-            "books_sent_ids": [],
-            "last_adv": datetime.now().timestamp(),
-            "nickname": "",
-        }
-        
-        # Create if new user
-        chat_in_db = chats_collection.find_one({"_id": tg_chat_id})
-        if chat_in_db is None:
-            ??????
-        
-        
-        if chat_in_db is None:
-            chats_collection.insert_one({
-                "_id": tg_chat_id,
-                "state": self.state,
-            })
-        # Load from DB
-        else:
-            self.state = chat_in_db['state']
-        
-
-    def set_state(self, name, value):
-        self.state[name] = value
-        chats_collection.update_one({ "_id": self.tg_chat_id }, { "$set": {"state": self.state }})
-    
-    def add_item(self, name, item):
-        self.state[name].append(item)
-        chats_collection.update_one({ "_id": self.tg_chat_id }, { "$set": {"state": self.state }})
 
 @send_typing_action
 def ontext(update, context):
@@ -214,7 +141,6 @@ def ontext(update, context):
 def button(update: Update, context: CallbackContext):
     """Parses the CallbackQuery and updates the message text."""
     update.callback_query.answer()
-
     user_selected_oprion = ''
     for onerow in update.callback_query.message.reply_markup.inline_keyboard:
         for onekey in onerow:
@@ -287,11 +213,10 @@ def button(update: Update, context: CallbackContext):
     
     print(current_chat.state)
 
-
 def MainLoop():
     """ Checking statuses and timers """
     Timer(config['mainloop_timer'], MainLoop).start()
-    
+
     for tg_chat_id, chat in Chats.items():
         # Processing 'wait' status
         if chat.state["status"] == 'wait':
@@ -368,18 +293,51 @@ def MainLoop():
             time.sleep(config['typing_timer'])
             updater.bot.send_message(chat.tg_chat_id, f"{reply_text}", parse_mode=ParseMode.HTML, disable_web_page_preview=True, reply_markup=reply_markup)
             logger.info(f"REPLY: {reply_text}")
-            chat.set_state('last_adv', datetime.now().timestamp())
-          
+            chat.set_state('last_adv', datetime.now().timestamp())   
 
 def load_chat(tg_chat_id):
     if tg_chat_id not in Chats:
         print("not in Chats")
         Chats[tg_chat_id] = Chat(tg_chat_id)
-    
+
     return Chats[tg_chat_id]
 
-
 def main():
+    """Start all configured bots."""
+    # load configuation files from each bot subdirectory
+    Bots = {}
+    for bot_name in os.listdir(os.path.dirname('bots/')):
+        # Loading configuration
+        try:
+            config = yaml.safe_load(open(f"bots/{bot_name}/config.yml", "r", encoding="utf-8"))
+        except FileNotFoundError:
+            logger.error(f"Fail to open bots/{bot_name}/config.yml")
+            continue
+        else:
+            logger.info(f"Bot {bot_name}: Config loaded")
+            Bots[bot_name] = BotClass(bot_name, config)
+
+    '''
+    # Connect to MongoDB
+    try:
+        conn = MongoClient()
+        logger.info("MongoDB connected!")
+        db = conn.database
+        chats_collection = db.booksbot
+    except:
+        logger.error("Could not connect to MongoDB")
+        
+    # Run telegram bot
+    try:
+        updater = Updater(token=config['token'], use_context=True)
+        updater.start_polling()
+        dispatcher = updater.dispatcher
+    except Exception:
+        logger.exception("Bot is NOT running")
+        sys.exit()
+    else:
+        logger.info("Bot is running")
+    
     text_handler = MessageHandler(Filters.text, ontext)
     dispatcher.add_handler(text_handler)
     updater.dispatcher.add_handler(CallbackQueryHandler(button))
@@ -387,12 +345,12 @@ def main():
     # Load Chats from DB
     cursor = chats_collection.find()
     for chat in cursor:
-        Chats[chat['_id']] = Chat(chat['_id'])
+        Chats[chat['_id']] = ChatClass(chat['_id'], chats_collection)
 
     logger.info("Starting mainloop")
     MainLoop()
-
+    '''
 
 if __name__ == '__main__':
-    Chats = {}
+    Bots = {}
     main()
