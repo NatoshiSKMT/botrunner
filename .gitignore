@@ -118,4 +118,4 @@ dmypy.json
 
 # Bot's config files
 bots/*
-!bots/.example/
+!bots/example/
