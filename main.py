@@ -1,14 +1,16 @@
-# !/usr/bin/env python3
+#!/usr/bin/env python
+"""This application provides the launch of a telegram bot"""
 import sys
-import yaml
 import logging
 import time
+from datetime import datetime, timezone
 from telegram.ext import Updater, MessageHandler, Filters, CallbackQueryHandler, CallbackContext
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, ParseMode, ChatAction
-from datetime import datetime, timezone
+import yaml
 from threading import Timer
 from pymongo import MongoClient
 from functools import wraps
+
 
 def send_typing_action(func):
     """Sends typing action while processing func command."""
@@ -59,8 +61,8 @@ else:
 
 class Chat():
     """
-        Class for operate with telegram chats.
-        state: 
+        Class for operate with telegram chats
+        
     """
     def __init__(self, tg_chat_id):
         super(Chat, self).__init__()
@@ -70,10 +72,15 @@ class Chat():
             "tags": [],
             "books_sent_ids": [],
             "last_adv": datetime.now().timestamp(),
+            "nickname": "",
         }
         
         # Create if new user
         chat_in_db = chats_collection.find_one({"_id": tg_chat_id})
+        if chat_in_db is None:
+            ??????
+        
+        
         if chat_in_db is None:
             chats_collection.insert_one({
                 "_id": tg_chat_id,
