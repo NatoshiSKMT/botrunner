@@ -3,14 +3,21 @@
 import logging
 from telegram.ext import Updater, MessageHandler, Filters, CallbackQueryHandler, CallbackContext
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, ParseMode, ChatAction
+from lib2to3.pgen2 import token
+import sys
+import time
+from datetime import datetime, timezone
 
 from helpers import send_typing_action
+from chat import ChatClass
 
 class BotClass():
     """Class for operate with telegram bots"""
     def __init__(self, bot_name, config, db):
         self.bot_name = bot_name
         self.config = config
+        self.config_modified = None
+        self.chats = {}
         
         # Set up the logger for bot
         FILE_NAME = None
@@ -28,41 +35,133 @@ class BotClass():
         if 'disabled' in config and config['disabled']:
             self.logger.debug(f"Bot {bot_name} is disabled")
             return
-        
-        self.logger.info(f"Bot {bot_name} is starting")
-        
-        # Select MongoDB
-        chats_collection = db[bot_name]
-        
+    
         # Run telegram bot
         try:
             self.updater = Updater(token=self.config['token'], use_context=True)
             self.updater.start_polling()
-            self.dispatcher = self.updater.dispatcher
         except Exception:
             self.logger.error(f"Bot {bot_name} is NOT running")
             return
         else:
-            self.logger.info(f"Bot {bot_name} is running")
+            self.logger.info(f"Bot {bot_name} started")
     
         self.text_handler = MessageHandler(Filters.text, self.ontext)
-        self.dispatcher.add_handler(self.text_handler)
+        self.updater.dispatcher.add_handler(self.text_handler)
         self.updater.dispatcher.add_handler(CallbackQueryHandler(self.button))
     
-        '''
-        # Load Chats from DB
-        cursor = chats_collection.find()
-        for chat in cursor:
-            Chats[chat['_id']] = ChatClass(chat['_id'], chats_collection)
-        '''
+        # Select MongoDB
+        self.chats_collection = db[bot_name]
         
-        '''
-        self.bot_token = bot_token
-        self.bot = telegram.Bot(token=self.bot_token)
-        self.chats_collection = chats_collection
-        self.chat_class = ChatClass(self.bot.get_me().id, self.chats_collection)
-        '''
+        print(self.updater.bot.get_me())
 
+        # Set up chats
+        # Load Chats from DB
+        cursor = self.chats_collection.find()
+        for chat in cursor:
+            self.chats[chat['_id']] = ChatClass(chat['_id'], self.chats_collection)
+    
+    def cron_jobs(self):
+        """Cron jobs for bot"""
+        logging.debug(f"Cron {self.bot_name} jobs started")
+        
+        """ Checking statuses and timers """
+        # TODO: move this to bot scenario config
+        for tg_chat_id, chat in self.chats.items():
+            # Processing 'wait' status
+            if chat.state["status"] == 'wait':
+                delta = datetime.now().timestamp() - chat.state['last_adv']
+                if delta >= self.config['advice_timer']:
+                    print(tg_chat_id, "set status onemore")
+                    chat.set_state('status', 'onemore')
+            
+            if chat.state["status"] == 'new':
+                delta = datetime.now().timestamp() - chat.state['last_adv']
+                if delta >= self.config['re_invitation_timer']:
+                    keyboard = [
+                        [InlineKeyboardButton("Начать", callback_data='Q1')],
+                        [InlineKeyboardButton("Попозже", callback_data='wait||status:new')],
+                    ]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+                    text = "Понимаем, что возможно вы сейчас заняты другими вопросами. Просто хотим напомнить, что готовы рекомендовать книгу для ребенка. Начнем?"
+                    self.updater.bot.send_message(chat.tg_chat_id, text, reply_markup=reply_markup)
+                    chat.set_state('last_adv', datetime.now().timestamp())
+                
+            # Processing 'advice' status
+            if chat.state["status"] == 'advice':
+                chat.set_state('status', 'wait')
+                
+                # Couting matches
+                books = {}
+                for book in self.config['books']:
+                    if book['id'] in chat.state['books_sent_ids']:
+                        continue
+                    for book_tag in book['tags']:
+                        if book_tag in chat.state['tags']:
+                            if book['id'] not in books:
+                                books[book['id']] = 1
+                            else:
+                                books[book['id']] += 1
+                
+                if len(books) > 0:
+                    books_sorted = sorted(books.items(), key=lambda books: books[1], reverse=True)
+                    for book in self.config['books']:
+                        if book['id'] == books_sorted[0][0]:
+                            chat.add_item('books_sent_ids', book['id'])
+                            title = book['name']
+                            description = book['description'].replace('\n', '\n\n')    
+                            
+                            self.updater.bot.send_chat_action(chat_id=chat.tg_chat_id, action=ChatAction.TYPING)
+                            time.sleep(self.config['typing_timer'])
+                            self.updater.bot.send_message(chat.tg_chat_id, f"<b>{title}</b>\n {description}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+                            if 'file' in book:
+                                self.updater.bot.send_chat_action(chat_id=chat.tg_chat_id, action=ChatAction.TYPING)
+                                time.sleep(self.config['typing_timer'])
+                                self.updater.bot.send_document(chat.tg_chat_id, document=open(book['file'], 'rb'), caption="Файл с карточками")
+                            keyboard = [[InlineKeyboardButton("Попробовать", callback_data='Q3')],]
+                            reply_markup = InlineKeyboardMarkup(keyboard)
+                            self.updater.bot.send_chat_action(chat_id=chat.tg_chat_id, action=ChatAction.TYPING)
+                            time.sleep(self.config['typing_timer'])
+                            self.updater.bot.send_message(chat.tg_chat_id, f"Попробовать еще раз?", parse_mode=ParseMode.HTML, disable_web_page_preview=True, reply_markup=reply_markup)
+                            chat.set_state('last_adv', datetime.now().timestamp())
+                else:
+                    self.updater.bot.send_message(chat.tg_chat_id, "Нет новой рекомендации")
+                    keyboard = [[InlineKeyboardButton("Попробовать", callback_data='Q3')],]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+                    self.updater.bot.send_message(chat.tg_chat_id, f"Попробовать еще раз?", parse_mode=ParseMode.HTML, disable_web_page_preview=True, reply_markup=reply_markup)
+                    pass
+
+            # Processing 'advice' status
+            if chat.state["status"] == 'onemore':
+                chat.set_state('status', 'wait')
+                reply_text = "Выбрать еще"
+                keyboard = [
+                    [InlineKeyboardButton("Выбрать", callback_data='Q3')],
+                    [InlineKeyboardButton("Отмена", callback_data='nothing')],
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                time.sleep(self.config['typing_timer'])
+                self.updater.bot.send_message(chat.tg_chat_id, f"{reply_text}", parse_mode=ParseMode.HTML, disable_web_page_preview=True, reply_markup=reply_markup)
+                self.logger.info(f"REPLY: {reply_text}")
+                chat.set_state('last_adv', datetime.now().timestamp())   
+    
+    def load_chat(tg_chat_id):
+        '''
+        if tg_chat_id not in Chats:
+            print("not in Chats")
+            Chats[tg_chat_id] = Chat(tg_chat_id)
+
+        return Chats[tg_chat_id]
+        '''
+    
+    def stop(self):
+        self.updater.stop()
+        self.updater.is_idle = False
+        self.logger.info(f"Bot {self.bot_name} stopped")
+    
+    def event(self, event):
+        self.logger.info(event)
+    
     @send_typing_action
     def ontext(update, context):
         """ Processing all patterns on text messages """
@@ -252,55 +351,3 @@ class BotClass():
         
         print(current_chat.state)
         '''
-
-    def get_chat_class(self):
-        """Return ChatClass object"""
-        return self.chat_class
-
-    def get_bot(self):
-        """Return telegram bot object"""
-        return self.bot
-
-    def get_bot_token(self):
-        """Return bot token"""
-        return self.bot_token
-
-    def get_bot_id(self):
-        """Return bot id"""
-        return self.bot.get_me().id
-
-    def get_bot_username(self):
-        """Return bot username"""
-        return self.bot.get_me().username
-
-    def get_bot_first_name(self):
-        """Return bot first name"""
-        return self.bot.get_me().first_name
-
-    def get_bot_last_name(self):
-        """Return bot last name"""
-        return self.bot.get_me().last_name
-
-    def get_bot_name(self):
-        """Return bot name"""
-        return self.bot.get_me().name
-
-    def get_bot_link(self):
-        """Return bot link"""
-        return self.bot.get_me().link
-
-    def get_bot_username(self):
-        """Return bot username"""
-        return self.bot.get_me().username
-
-    def get_bot_is_bot(self):
-        """Return bot is_bot"""
-        return self.bot.get_me().is_bot
-
-    def get_bot_first_name(self):
-        """Return bot first name"""
-        return self.bot.get_me().first_name
-
-    def get_bot_last_name(self):
-        """Return bot last name"""
-        return self.bot.get_me().last_name
